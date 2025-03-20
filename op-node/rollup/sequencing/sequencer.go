@@ -491,6 +491,8 @@ func (d *Sequencer) startBuildingBlock() {
 	// Figure out which L1 origin block we're going to be building on top of.
 	l1Origin, err := d.l1OriginSelector.FindL1Origin(ctx, l2Head)
 	if err != nil {
+		d.nextAction = d.timeNow().Add(time.Second)
+		d.nextActionOK = d.active.Load()
 		d.log.Error("Error finding next L1 Origin", "err", err)
 		d.emitter.Emit(rollup.L1TemporaryErrorEvent{Err: err})
 		return
@@ -543,9 +545,21 @@ func (d *Sequencer) startBuildingBlock() {
 		d.log.Info("Sequencing Fjord upgrade block")
 	}
 
-	// For the Granite activation block we shouldn't include any sequencer transactions.
+	// For the Granite activation block we can include sequencer transactions.
 	if d.rollupCfg.IsGraniteActivationBlock(uint64(attrs.Timestamp)) {
 		d.log.Info("Sequencing Granite upgrade block")
+	}
+
+	// For the Isthmus activation block we shouldn't include any sequencer transactions.
+	if d.rollupCfg.IsIsthmusActivationBlock(uint64(attrs.Timestamp)) {
+		attrs.NoTxPool = true
+		d.log.Info("Sequencing Isthmus upgrade block")
+	}
+
+	// For the Interop activation block we must not include any sequencer transactions.
+	if d.rollupCfg.IsInteropActivationBlock(uint64(attrs.Timestamp)) {
+		attrs.NoTxPool = true
+		d.log.Info("Sequencing Interop upgrade block")
 	}
 
 	d.log.Debug("prepared attributes for new block",

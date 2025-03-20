@@ -115,6 +115,8 @@ func NewConfig(ctx *cli.Context, log log.Logger) (*node.Config, error) {
 		ConductorRpcTimeout: ctx.Duration(flags.ConductorRpcTimeoutFlag.Name),
 
 		AltDA: altda.ReadCLIConfig(ctx),
+
+		IgnoreMissingPectraBlobSchedule: ctx.Bool(flags.IgnoreMissingPectraBlobSchedule.Name),
 	}
 
 	if err := cfg.LoadPersisted(log); err != nil {
@@ -265,6 +267,10 @@ func applyOverrides(ctx *cli.Context, rollupConfig *rollup.Config) {
 	if ctx.IsSet(opflags.HoloceneOverrideFlagName) {
 		holocene := ctx.Uint64(opflags.HoloceneOverrideFlagName)
 		rollupConfig.HoloceneTime = &holocene
+	}
+	if ctx.IsSet(opflags.PectraBlobScheduleOverrideFlagName) {
+		pectrablobschedule := ctx.Uint64(opflags.PectraBlobScheduleOverrideFlagName)
+		rollupConfig.PectraBlobScheduleTime = &pectrablobschedule
 	}
 }
 

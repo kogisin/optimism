@@ -1,7 +1,6 @@
 package interop
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,12 +11,11 @@ import (
 	"github.com/ethereum-optimism/optimism/op-e2e/actions/helpers"
 	"github.com/ethereum-optimism/optimism/op-e2e/actions/interop/dsl"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/interop/contracts/bindings/emit"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/interop/contracts/bindings/inbox"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/event"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/interop/managed"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/ethereum-optimism/optimism/op-service/predeploys"
+	stypes "github.com/ethereum-optimism/optimism/op-supervisor/supervisor/types"
 )
 
 func TestFullInterop(gt *testing.T) {
@@ -25,10 +23,7 @@ func TestFullInterop(gt *testing.T) {
 
 	is := dsl.SetupInterop(t)
 	actors := is.CreateActors()
-
-	// get both sequencers set up
-	actors.ChainA.Sequencer.ActL2PipelineFull(t)
-	actors.ChainB.Sequencer.ActL2PipelineFull(t)
+	actors.PrepareChainState(t)
 
 	// sync the supervisor, handle initial events emitted by the nodes
 	actors.ChainA.Sequencer.SyncSupervisor(t)
@@ -168,10 +163,7 @@ func TestFinality(gt *testing.T) {
 	testFinality := func(t helpers.StatefulTesting, extraBlocks int) {
 		is := dsl.SetupInterop(t)
 		actors := is.CreateActors()
-
-		// set up a blank ChainA
-		actors.ChainA.Sequencer.ActL2PipelineFull(t)
-		actors.ChainA.Sequencer.SyncSupervisor(t)
+		actors.PrepareChainState(t)
 
 		actors.Supervisor.ProcessFull(t)
 
@@ -250,36 +242,25 @@ func TestInteropLocalSafeInvalidation(gt *testing.T) {
 
 	is := dsl.SetupInterop(t)
 	actors := is.CreateActors()
-
-	// get both sequencers set up
-	actors.ChainA.Sequencer.ActL2PipelineFull(t)
-	actors.ChainB.Sequencer.ActL2PipelineFull(t)
-
-	// sync the supervisor, handle initial events emitted by the nodes
-	actors.ChainA.Sequencer.SyncSupervisor(t)
-	actors.ChainB.Sequencer.SyncSupervisor(t)
-	actors.Supervisor.ProcessFull(t)
+	actors.PrepareChainState(t)
 
 	genesisB := actors.ChainB.Sequencer.SyncStatus()
 
 	// build L2 block on chain B with invalid executing message pointing to A.
 	fakeMessage := []byte("this message was never emitted")
 	aliceB := setupUser(t, is, actors.ChainB, 0)
-	auth := newL2TxOpts(t, aliceB.secret, actors.ChainB)
-	id := inbox.Identifier{
+	id := stypes.Identifier{
 		Origin:      common.Address{0x42},
-		BlockNumber: new(big.Int).SetUint64(genesisB.UnsafeL2.Number),
-		LogIndex:    common.Big0,
-		Timestamp:   new(big.Int).SetUint64(genesisB.UnsafeL2.Time),
-		ChainId:     actors.ChainA.RollupCfg.L2ChainID,
+		BlockNumber: genesisB.UnsafeL2.Number,
+		LogIndex:    0,
+		Timestamp:   genesisB.UnsafeL2.Time,
+		ChainID:     eth.ChainIDFromBig(actors.ChainA.RollupCfg.L2ChainID),
 	}
-	contract, err := inbox.NewInbox(predeploys.CrossL2InboxAddr, actors.ChainB.SequencerEngine.EthClient())
-	require.NoError(t, err)
-	tx, err := contract.ValidateMessage(auth, id, crypto.Keccak256Hash(fakeMessage))
-	require.NoError(t, err)
+	msgHash := crypto.Keccak256Hash(fakeMessage)
+	tx := newExecuteMessageTxFromIDAndHash(t, aliceB, actors.ChainB, id, msgHash)
 
 	actors.ChainB.Sequencer.ActL2StartBlock(t)
-	_, err = actors.ChainB.SequencerEngine.EngineApi.IncludeTx(tx, aliceB.address)
+	_, err := actors.ChainB.SequencerEngine.EngineApi.IncludeTx(tx, aliceB.address)
 	require.NoError(t, err)
 	actors.ChainB.Sequencer.ActL2EndBlock(t)
 	actors.ChainB.Sequencer.ActL2PipelineFull(t)
@@ -376,15 +357,7 @@ func TestInteropCrossSafeDependencyDelay(gt *testing.T) {
 
 	is := dsl.SetupInterop(t)
 	actors := is.CreateActors()
-
-	// get both sequencers set up
-	actors.ChainA.Sequencer.ActL2PipelineFull(t)
-	actors.ChainB.Sequencer.ActL2PipelineFull(t)
-
-	// sync the supervisor, handle initial events emitted by the nodes
-	actors.ChainA.Sequencer.SyncSupervisor(t)
-	actors.ChainB.Sequencer.SyncSupervisor(t)
-	actors.Supervisor.ProcessFull(t)
+	actors.PrepareChainState(t)
 
 	// We create a batch with some empty blocks before and after the cross-chain message,
 	// so multiple L2 blocks are all derived from the same L1 block.
@@ -460,4 +433,37 @@ func TestInteropCrossSafeDependencyDelay(gt *testing.T) {
 	source, err := actors.Supervisor.CrossDerivedFrom(t.Ctx(), actors.ChainA.ChainID, execTxIncludedIn.ID())
 	require.NoError(t, err)
 	require.Equal(t, chainBSubmittedIn.NumberU64(), source.Number)
+}
+
+func TestInteropExecutingMessageOutOfRangeLogIndex(gt *testing.T) {
+	t := helpers.NewDefaultTesting(gt)
+	is := dsl.SetupInterop(t)
+	actors := is.CreateActors()
+	actors.PrepareChainState(t)
+	aliceA := setupUser(t, is, actors.ChainA, 0)
+
+	// Execute a fake log on chain A
+	chainBHead := actors.ChainB.Sequencer.SyncStatus().UnsafeL2
+	nonExistentID := stypes.Identifier{
+		Origin:      aliceA.address,
+		BlockNumber: chainBHead.Number,
+		LogIndex:    0,
+		Timestamp:   chainBHead.Time,
+		ChainID:     eth.ChainIDFromBig(actors.ChainB.RollupCfg.L2ChainID),
+	}
+	nonExistentHash := crypto.Keccak256Hash([]byte("fake message"))
+	tx := newExecuteMessageTxFromIDAndHash(t, aliceA, actors.ChainA, nonExistentID, nonExistentHash)
+	includeTxOnChainBasic(t, actors.ChainA, tx, aliceA.address)
+	actors.ChainB.Sequencer.ActL2EmptyBlock(t)
+
+	// Sync the system
+	actors.ChainA.Sequencer.SyncSupervisor(t)
+	actors.ChainB.Sequencer.SyncSupervisor(t)
+	actors.Supervisor.ProcessFull(t)
+	actors.ChainA.Sequencer.ActL2PipelineFull(t)
+	actors.ChainB.Sequencer.ActL2PipelineFull(t)
+
+	// Assert that chainA's block is not cross-safe but chainB's is.
+	assertHeads(t, actors.ChainA, 1, 0, 0, 0)
+	assertHeads(t, actors.ChainB, 1, 0, 1, 0)
 }
