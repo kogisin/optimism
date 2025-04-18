@@ -340,13 +340,58 @@ func TestDeriveBlockForConsolidateStep(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ReplaceChainB-BlockNumberTooBig",
+			testCase: consolidationTestCase{
+				logBuilderFn: func(includeBlockNumbers map[supervisortypes.ChainIndex]uint64, config *staticConfigSource) map[supervisortypes.ChainIndex][]*gethTypes.Log {
+					init1 := &gethTypes.Log{
+						Address: initiatingMessageOrigin,
+						Topics:  []common.Hash{initiatingMessageTopic},
+					}
+					init2 := &gethTypes.Log{
+						Address: initiatingMessageOrigin2,
+						Topics:  []common.Hash{initiatingMessageTopic},
+					}
+					exec := createExecMessage(1_000_000, config, chainA)
+					return map[supervisortypes.ChainIndex][]*gethTypes.Log{
+						chainA: {init1, init2},
+						chainB: {convertExecutingMessageToLog(t, exec)},
+					}
+				},
+				expectBlockReplacements: func(config *staticConfigSource) []supervisortypes.ChainIndex {
+					return []supervisortypes.ChainIndex{chainB}
+				},
+			},
+		},
+		{
+			name: "ReplaceChainB-LogIndexTooBig",
+			testCase: consolidationTestCase{
+				logBuilderFn: func(includeBlockNumbers map[supervisortypes.ChainIndex]uint64, config *staticConfigSource) map[supervisortypes.ChainIndex][]*gethTypes.Log {
+					init1 := &gethTypes.Log{
+						Address: initiatingMessageOrigin,
+						Topics:  []common.Hash{initiatingMessageTopic},
+					}
+					init2 := &gethTypes.Log{
+						Address: initiatingMessageOrigin2,
+						Topics:  []common.Hash{initiatingMessageTopic},
+					}
+					exec := createExecMessage(includeBlockNumbers[chainA], config, chainA)
+					exec.Identifier.Origin = init2.Address
+					exec.Identifier.LogIndex = 1_000_000
+					return map[supervisortypes.ChainIndex][]*gethTypes.Log{
+						chainA: {init1, init2},
+						chainB: {convertExecutingMessageToLog(t, exec)},
+					}
+				},
+				expectBlockReplacements: func(config *staticConfigSource) []supervisortypes.ChainIndex {
+					return []supervisortypes.ChainIndex{chainB}
+				},
+			},
+		},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name != "ReplaceBothChains-CascadingReorg" {
-				t.Skip()
-			}
 			runConsolidationTestCase(t, tt.testCase)
 		})
 	}
@@ -527,7 +572,7 @@ func TestPanicIfAgreedPrestateIsAfterGameTimestamp(t *testing.T) {
 
 	// We have reached the game's timestamp so should just trace extend the agreed claim
 	expectedClaim := agreedPrestatehash
-	require.PanicsWithError(t, fmt.Sprintf("agreed prestate timestamp %v is after the game timestamp %v", agreedSuperRoot.Timestamp, agreedSuperRoot.Timestamp-1), func() {
+	require.PanicsWithValue(t, fmt.Sprintf("agreed prestate timestamp %v is after the game timestamp %v", agreedSuperRoot.Timestamp, agreedSuperRoot.Timestamp-1), func() {
 		verifyResult(t, logger, tasksStub, configSource, l2PreimageOracle, agreedPrestatehash, agreedSuperRoot.Timestamp-1, expectedClaim)
 	})
 }
@@ -627,7 +672,7 @@ func (s *staticConfigSource) RollupConfig(chainID eth.ChainID) (*rollup.Config, 
 			return cfg, nil
 		}
 	}
-	return nil, fmt.Errorf("no rollup config found for chain %d", chainID)
+	panic(fmt.Sprintf("no rollup config found for chain %d", chainID))
 }
 
 func (s *staticConfigSource) ChainConfig(chainID eth.ChainID) (*params.ChainConfig, error) {
@@ -636,7 +681,7 @@ func (s *staticConfigSource) ChainConfig(chainID eth.ChainID) (*params.ChainConf
 			return cfg, nil
 		}
 	}
-	return nil, fmt.Errorf("no chain config found for chain %d", chainID)
+	panic(fmt.Sprintf("no chain config found for chain %d", chainID))
 }
 
 func (s *staticConfigSource) DependencySet(chainID eth.ChainID) (depset.DependencySet, error) {

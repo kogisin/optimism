@@ -32,21 +32,21 @@ type DefaultInteropSystemIDs struct {
 	L2BProposer stack.L2ProposerID
 }
 
-func DefaultInteropSystem(contractPaths ContractPaths) (DefaultInteropSystemIDs, stack.Option) {
+func DefaultInteropSystem(dest *DefaultInteropSystemIDs) stack.Option {
 	l1ID := eth.ChainIDFromUInt64(900)
 	l2AID := eth.ChainIDFromUInt64(901)
 	l2BID := eth.ChainIDFromUInt64(902)
 	ids := DefaultInteropSystemIDs{
-		L1:          stack.L1NetworkID{Key: "l1", ChainID: l1ID},
+		L1:          stack.L1NetworkID(l1ID),
 		L1EL:        stack.L1ELNodeID{Key: "l1", ChainID: l1ID},
 		L1CL:        stack.L1CLNodeID{Key: "l1", ChainID: l1ID},
-		Superchain:  "dev",
-		Cluster:     "dev",
+		Superchain:  "main", // TODO(#15244): hardcoded to match the deployer default ID
+		Cluster:     "main",
 		Supervisor:  "dev",
-		L2A:         stack.L2NetworkID{Key: "l2A", ChainID: l2AID},
+		L2A:         stack.L2NetworkID(l2AID),
 		L2ACL:       stack.L2CLNodeID{Key: "sequencer", ChainID: l2AID},
 		L2AEL:       stack.L2ELNodeID{Key: "sequencer", ChainID: l2AID},
-		L2B:         stack.L2NetworkID{Key: "l2B", ChainID: l2BID},
+		L2B:         stack.L2NetworkID(l2BID),
 		L2BCL:       stack.L2CLNodeID{Key: "sequencer", ChainID: l2BID},
 		L2BEL:       stack.L2ELNodeID{Key: "sequencer", ChainID: l2BID},
 		L2ABatcher:  stack.L2BatcherID{Key: "main", ChainID: l2AID},
@@ -55,14 +55,20 @@ func DefaultInteropSystem(contractPaths ContractPaths) (DefaultInteropSystemIDs,
 		L2BProposer: stack.L2ProposerID{Key: "main", ChainID: l2BID},
 	}
 
-	opt := stack.Option(func(setup *stack.Setup) {
-		setup.Log.Info("Setting up")
+	opt := stack.Option(func(o stack.Orchestrator) {
+		o.P().Logger().Info("Setting up")
 	})
 
 	opt.Add(WithMnemonicKeys(devkeys.TestMnemonic))
 
-	opt.Add(WithInteropGen(ids.L1, ids.Superchain, ids.Cluster,
-		[]stack.L2NetworkID{ids.L2A, ids.L2B}, contractPaths))
+	opt.Add(WithDeployer(
+		WithLocalContractSources(),
+		WithCommons(ids.L1.ChainID()),
+		WithPrefundedL2(ids.L2A.ChainID()),
+		WithPrefundedL2(ids.L2B.ChainID())))
+
+	//opt.Add(WithInteropGen(ids.L1, ids.Superchain, ids.Cluster,
+	//	[]stack.L2NetworkID{ids.L2A, ids.L2B}, contractPaths))
 
 	opt.Add(WithL1Nodes(ids.L1EL, ids.L1CL))
 
@@ -89,5 +95,11 @@ func DefaultInteropSystem(contractPaths ContractPaths) (DefaultInteropSystemIDs,
 
 	// TODO(#15057): maybe L2 challenger
 
-	return ids, opt
+	// Upon evaluation of the option, export the contents we created.
+	// Ids here are static, but other things may be exported too.
+	opt.Add(func(orch stack.Orchestrator) {
+		*dest = ids
+	})
+
+	return opt
 }
