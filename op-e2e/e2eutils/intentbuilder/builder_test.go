@@ -11,7 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
+	"github.com/ethereum-optimism/optimism/op-chain-ops/addresses"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/artifacts"
+	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/standard"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/state"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -30,6 +32,7 @@ func TestBuilder(t *testing.T) {
 	superchainConfig.WithProxyAdminOwner(common.HexToAddress("0xaaaa"))
 	superchainConfig.WithGuardian(common.HexToAddress("0xbbbb"))
 	superchainConfig.WithProtocolVersionsOwner(common.HexToAddress("0xcccc"))
+	superchainConfig.WithChallenger(common.HexToAddress("0xdddd"))
 
 	// Configure L1
 	pragueOffset := uint64(100)
@@ -118,10 +121,11 @@ func TestBuilder(t *testing.T) {
 		ConfigType:            state.IntentTypeCustom,
 		L1ChainID:             1,
 		SuperchainConfigProxy: &superchainConfigProxyAddr,
-		SuperchainRoles: &state.SuperchainRoles{
-			ProxyAdminOwner:       common.HexToAddress("0xaaaa"),
-			Guardian:              common.HexToAddress("0xbbbb"),
-			ProtocolVersionsOwner: common.HexToAddress("0xcccc"),
+		SuperchainRoles: &addresses.SuperchainRoles{
+			SuperchainProxyAdminOwner: common.HexToAddress("0xaaaa"),
+			SuperchainGuardian:        common.HexToAddress("0xbbbb"),
+			ProtocolVersionsOwner:     common.HexToAddress("0xcccc"),
+			Challenger:                common.HexToAddress("0xdddd"),
 		},
 		L1DevGenesisParams: &l1Params,
 		L1ContractsLocator: &artifacts.Locator{
@@ -154,18 +158,19 @@ func TestBuilder(t *testing.T) {
 				Eip1559DenominatorCanyon: 250,
 				Eip1559Denominator:       50,
 				Eip1559Elasticity:        10,
+				GasLimit:                 standard.GasLimit,
 				OperatorFeeScalar:        100,
 				OperatorFeeConstant:      200,
 				DeployOverrides: map[string]any{
 					"l2BlockTime":                 uint64(2),
-					"l2GenesisRegolithTimeOffset": 0,
-					"l2GenesisCanyonTimeOffset":   0,
-					"l2GenesisDeltaTimeOffset":    0,
-					"l2GenesisEcotoneTimeOffset":  0,
-					"l2GenesisFjordTimeOffset":    0,
-					"l2GenesisGraniteTimeOffset":  0,
-					"l2GenesisHoloceneTimeOffset": 0,
-					"l2GenesisIsthmusTimeOffset":  isthmusOffset,
+					"l2GenesisRegolithTimeOffset": hexutil.Uint64(0),
+					"l2GenesisCanyonTimeOffset":   hexutil.Uint64(0),
+					"l2GenesisDeltaTimeOffset":    hexutil.Uint64(0),
+					"l2GenesisEcotoneTimeOffset":  hexutil.Uint64(0),
+					"l2GenesisFjordTimeOffset":    hexutil.Uint64(0),
+					"l2GenesisGraniteTimeOffset":  hexutil.Uint64(0),
+					"l2GenesisHoloceneTimeOffset": hexutil.Uint64(0),
+					"l2GenesisIsthmusTimeOffset":  hexutil.Uint64(isthmusOffset),
 				},
 				L2DevGenesisParams: &state.L2DevGenesisParams{
 					Prefund: map[common.Address]*hexutil.U256{

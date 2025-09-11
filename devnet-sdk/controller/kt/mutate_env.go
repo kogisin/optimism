@@ -2,10 +2,8 @@ package kt
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ethereum-optimism/optimism/devnet-sdk/descriptors"
-
 	"github.com/ethereum-optimism/optimism/kurtosis-devnet/pkg/kurtosis/api/interfaces"
 )
 
@@ -57,9 +55,11 @@ func findSvcInEnv(env *descriptors.DevnetEnvironment, serviceName string) redund
 }
 
 func findSvcInChain(chain *descriptors.Chain, serviceName string) *descriptors.Service {
-	for _, svc := range chain.Services {
-		if svc.Name == serviceName {
-			return svc
+	for _, instances := range chain.Services {
+		for _, svc := range instances {
+			if svc.Name == serviceName {
+				return svc
+			}
 		}
 	}
 
@@ -93,7 +93,6 @@ func (s *KurtosisControllerSurface) updateDevnetEnvironmentService(ctx context.C
 	}
 
 	if on {
-		fmt.Println("on")
 		svc.refreshEndpoints(serviceCtx)
 	}
 	// otherwise the service is down anyway, it doesn't matter if it has outdated endpoints

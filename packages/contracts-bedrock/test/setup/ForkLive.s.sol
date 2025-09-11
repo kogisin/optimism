@@ -21,9 +21,9 @@ import { LibString } from "solady/src/utils/LibString.sol";
 import { IFaultDisputeGame } from "interfaces/dispute/IFaultDisputeGame.sol";
 import { IPermissionedDisputeGame } from "interfaces/dispute/IPermissionedDisputeGame.sol";
 import { IDisputeGameFactory } from "interfaces/dispute/IDisputeGameFactory.sol";
+import { IDelayedWETH } from "interfaces/dispute/IDelayedWETH.sol";
 import { IAddressManager } from "interfaces/legacy/IAddressManager.sol";
 import { ISystemConfig } from "interfaces/L1/ISystemConfig.sol";
-import { ISuperchainConfig } from "interfaces/L1/ISuperchainConfig.sol";
 import { IProxyAdmin } from "interfaces/universal/IProxyAdmin.sol";
 import { IOPContractsManager } from "interfaces/L1/IOPContractsManager.sol";
 import { IAnchorStateRegistry } from "interfaces/dispute/IAnchorStateRegistry.sol";
@@ -204,43 +204,16 @@ contract ForkLive is Deployer {
             absolutePrestate: Claim.wrap(bytes32(keccak256("absolutePrestate")))
         });
 
-        IOPContractsManager.OpChainConfig[] memory opmChain = new IOPContractsManager.OpChainConfig[](0);
         // Temporarily replace the upgrader with a DelegateCaller so we can test the upgrade,
         // then reset its code to the original code.
-
         bytes memory upgraderCode = address(upgrader).code;
         vm.etch(upgrader, vm.getDeployedCode("test/mocks/Callers.sol:DelegateCaller"));
 
-        // The 2.0.0 OPCM requires that the SuperchainConfig and ProtocolVersions contracts
-        // have been upgraded before it will upgrade other contracts.
-        // Those contracts can only be upgrade by the OP Mainnet ProxyAdminOwner. So for chains which have a different
-        // ProxyAdminOwner, we first need to call opcm.upgrade from the OP Mainnet PAO.
-        address mainnetPAO = artifacts.mustGetAddress("SuperchainConfigProxy");
+        // The 4.1.0 OPCM requires that the SuperchainConfig contracts have been upgraded before it will upgrade other
+        // contracts. For this v4.1.0, OP Mainnet's superchainConfig is already at the expected version. So we do not
+        // need to upgrade it.
 
-        if (upgrader != mainnetPAO) {
-            ISuperchainConfig superchainConfig = ISuperchainConfig(mainnetPAO);
-
-            address opmUpgrader = IProxyAdmin(EIP1967Helper.getAdmin(address(superchainConfig))).owner();
-            vm.etch(opmUpgrader, vm.getDeployedCode("test/mocks/Callers.sol:DelegateCaller"));
-
-            DelegateCaller(opmUpgrader).dcForward(
-                address(0x026b2F158255Beac46c1E7c6b8BbF29A4b6A7B76),
-                abi.encodeCall(IOPContractsManager.upgrade, (opmChain))
-            );
-        }
-
-        // Start by doing Upgrade 13.
-
-        DelegateCaller(upgrader).dcForward(
-            address(0x026b2F158255Beac46c1E7c6b8BbF29A4b6A7B76), abi.encodeCall(IOPContractsManager.upgrade, (opChains))
-        );
-
-        // Then do Upgrade 14.
-        DelegateCaller(upgrader).dcForward(
-            address(0x3A1f523a4bc09cd344A2745a108Bb0398288094F), abi.encodeCall(IOPContractsManager.upgrade, (opChains))
-        );
-
-        // Then do the final upgrade.
+        // Upgrade the chain.
         DelegateCaller(upgrader).dcForward(address(opcm), abi.encodeCall(IOPContractsManager.upgrade, (opChains)));
 
         // Reset the upgrader to the original code.
@@ -255,7 +228,9 @@ contract ForkLive is Deployer {
 
         address permissionlessDisputeGame = address(disputeGameFactory.gameImpls(GameTypes.CANNON));
         if (permissionlessDisputeGame != address(0)) {
+            // Both names are used in different places, so we save both.
             artifacts.save("PermissionlessDisputeGame", address(permissionlessDisputeGame));
+            artifacts.save("FaultDisputeGame", address(permissionlessDisputeGame));
         }
 
         IAnchorStateRegistry newAnchorStateRegistry =
@@ -266,6 +241,11 @@ contract ForkLive is Deployer {
         IOptimismPortal2 portal = IOptimismPortal2(artifacts.mustGetAddress("OptimismPortalProxy"));
         address lockboxAddress = address(portal.ethLockbox());
         artifacts.save("ETHLockboxProxy", lockboxAddress);
+
+        // Get the new DelayedWETH address and save it (might be a new proxy).
+        IDelayedWETH newDelayedWeth = IPermissionedDisputeGame(permissionedDisputeGame).weth();
+        artifacts.save("DelayedWETHProxy", address(newDelayedWeth));
+        artifacts.save("DelayedWETHImpl", EIP1967Helper.getImplementation(address(newDelayedWeth)));
     }
 
     /// @notice Saves the proxy and implementation addresses for a contract name

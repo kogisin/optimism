@@ -59,6 +59,7 @@ type ServiceContext interface {
 	GetMaybePublicIPAddress() string
 	GetPublicPorts() map[string]PortSpec
 	GetPrivatePorts() map[string]PortSpec
+	GetLabels() map[string]string
 }
 
 type EnclaveContext interface {
@@ -73,7 +74,23 @@ type EnclaveContext interface {
 	RunStarlarkScript(context.Context, string, *starlark_run_config.StarlarkRunConfig) error
 }
 
+type EnclaveNameAndUuid interface {
+	GetName() string
+	GetUuid() string
+}
+
+type EnclaveStatus string
+
+const (
+	EnclaveStatusEmpty   EnclaveStatus = "empty"
+	EnclaveStatusRunning EnclaveStatus = "running"
+	EnclaveStatusStopped EnclaveStatus = "stopped"
+)
+
 type KurtosisContextInterface interface {
 	CreateEnclave(context.Context, string) (EnclaveContext, error)
 	GetEnclave(context.Context, string) (EnclaveContext, error)
+	GetEnclaveStatus(context.Context, string) (EnclaveStatus, error)
+	DestroyEnclave(context.Context, string) error
+	Clean(context.Context, bool) ([]EnclaveNameAndUuid, error)
 }

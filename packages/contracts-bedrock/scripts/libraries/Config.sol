@@ -36,10 +36,11 @@ enum Fork {
     GRANITE,
     HOLOCENE,
     ISTHMUS,
-    JOVIAN
+    JOVIAN,
+    INTEROP
 }
 
-Fork constant LATEST_FORK = Fork.JOVIAN;
+Fork constant LATEST_FORK = Fork.INTEROP;
 
 library ForkUtils {
     function toString(Fork _fork) internal pure returns (string memory) {
@@ -123,6 +124,11 @@ library Config {
         env_ = vm.envUint("DRIPPIE_OWNER_PRIVATE_KEY");
     }
 
+    /// @notice Returns the API key for the Etherscan API.
+    function etherscanApiKey() internal view returns (string memory env_) {
+        env_ = vm.envString("ETHERSCAN_API_KEY");
+    }
+
     /// @notice Returns the OutputMode for genesis allocs generation.
     ///         It reads the mode from the environment variable OUTPUT_MODE.
     ///         If it is unset, OutputMode.ALL is returned.
@@ -138,11 +144,6 @@ library Config {
         } else {
             revert(string.concat("Config: unknown output mode: ", modeStr));
         }
-    }
-
-    /// @notice Returns true if multithreaded Cannon is used for the deployment.
-    function useMultithreadedCannon() internal view returns (bool enabled_) {
-        enabled_ = vm.envOr("USE_MT_CANNON", false);
     }
 
     /// @notice Returns the latest fork to use for genesis allocs generation.
@@ -233,5 +234,10 @@ library Config {
     /// @notice Returns true if the fork is a test fork.
     function forkTest() internal view returns (bool) {
         return vm.envOr("FORK_TEST", false);
+    }
+
+    /// @notice Returns true if the development feature interop is enabled.
+    function devFeatureInterop() internal view returns (bool) {
+        return vm.envOr("DEV_FEATURE__OPTIMISM_PORTAL_INTEROP", false);
     }
 }

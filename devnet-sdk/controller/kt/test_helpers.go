@@ -44,6 +44,10 @@ func (m *testServiceContext) GetPrivatePorts() map[string]interfaces.PortSpec {
 	return m.privatePorts
 }
 
+func (m *testServiceContext) GetLabels() map[string]string {
+	return make(map[string]string)
+}
+
 // mockEnclaveFS implements fs.EnclaveContextIface for testing
 type mockEnclaveFS struct {
 	env *descriptors.DevnetEnvironment
@@ -126,4 +130,16 @@ func (m *mockKurtosisContext) GetEnclave(ctx context.Context, name string) (inte
 		return enclave, nil
 	}
 	return nil, nil
+}
+
+func (m *mockKurtosisContext) Clean(ctx context.Context, destroyAll bool) ([]interfaces.EnclaveNameAndUuid, error) {
+	return []interfaces.EnclaveNameAndUuid{}, nil
+}
+
+func (m *mockKurtosisContext) GetEnclaveStatus(ctx context.Context, name string) (interfaces.EnclaveStatus, error) {
+	return interfaces.EnclaveStatusRunning, nil
+}
+
+func (m *mockKurtosisContext) DestroyEnclave(ctx context.Context, name string) error {
+	return nil
 }
