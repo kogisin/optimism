@@ -1,14 +1,13 @@
 package presets
 
 import (
+	"github.com/ethereum-optimism/optimism/op-core/forks"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/dsl"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack/match"
 	"github.com/ethereum-optimism/optimism/op-devstack/sysgo"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
 
 type SimpleWithSyncTester struct {
@@ -19,8 +18,8 @@ type SimpleWithSyncTester struct {
 	L2CL2          *dsl.L2CLNode
 }
 
-func WithSimpleWithSyncTester(fcus eth.FCUState) stack.CommonOption {
-	return stack.MakeCommon(sysgo.DefaultSimpleSystemWithSyncTester(&sysgo.DefaultSimpleSystemWithSyncTesterIDs{}, fcus))
+func WithSimpleWithSyncTester() stack.CommonOption {
+	return stack.MakeCommon(sysgo.DefaultSimpleSystemWithSyncTester(&sysgo.DefaultSimpleSystemWithSyncTesterIDs{}))
 }
 
 func NewSimpleWithSyncTester(t devtest.T) *SimpleWithSyncTester {
@@ -44,6 +43,6 @@ func NewSimpleWithSyncTester(t devtest.T) *SimpleWithSyncTester {
 	}
 }
 
-func WithHardforkSequentialActivation(startFork, endFork rollup.ForkName, delta uint64) stack.CommonOption {
+func WithHardforkSequentialActivation(startFork, endFork forks.Name, delta uint64) stack.CommonOption {
 	return stack.MakeCommon(sysgo.WithDeployerOptions(sysgo.WithHardforkSequentialActivation(startFork, endFork, &delta)))
 }

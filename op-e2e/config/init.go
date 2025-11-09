@@ -12,13 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum-optimism/optimism/cannon/mipsevm/versions"
+	"github.com/ethereum-optimism/optimism/op-core/forks"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/artifacts"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/inspect"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/pipeline"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/standard"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/state"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/exp/maps"
@@ -256,7 +257,7 @@ func initAllocType(root string, allocType AllocType) {
 			}
 
 			upgradeSchedule := new(genesis.UpgradeScheduleDeployConfig)
-			upgradeSchedule.ActivateForkAtGenesis(rollup.ForkName(mode))
+			upgradeSchedule.ActivateForkAtGenesis(forks.Name(mode))
 			upgradeOverridesJSON, err := json.Marshal(upgradeSchedule)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal upgrade schedule: %w", err))
@@ -354,9 +355,11 @@ func defaultIntent(root string, loc *artifacts.Locator, deployer common.Address,
 			"baseFeeVaultMinimumWithdrawalAmount":      "0x8ac7230489e80000",
 			"l1FeeVaultMinimumWithdrawalAmount":        "0x8ac7230489e80000",
 			"sequencerFeeVaultMinimumWithdrawalAmount": "0x8ac7230489e80000",
+			"operatorFeeVaultMinimumWithdrawalAmount":  "0x8ac7230489e80000",
 			"baseFeeVaultWithdrawalNetwork":            0,
 			"l1FeeVaultWithdrawalNetwork":              0,
 			"sequencerFeeVaultWithdrawalNetwork":       0,
+			"operatorFeeVaultWithdrawalNetwork":        0,
 			"finalizationPeriodSeconds":                2,
 			"l2GenesisBlockBaseFeePerGas":              "0x1",
 			"gasPriceOracleOverhead":                   2100,
@@ -368,7 +371,7 @@ func defaultIntent(root string, loc *artifacts.Locator, deployer common.Address,
 			"l1CancunTimeOffset":                       "0x0",
 			"faultGameAbsolutePrestate":                defaultPrestate.Hex(),
 			"faultGameMaxDepth":                        50,
-			"faultGameClockExtension":                  0,
+			"faultGameClockExtension":                  1,
 			"faultGameMaxClockDuration":                1200,
 			"faultGameGenesisBlock":                    0,
 			"faultGameGenesisOutputRoot":               genesisOutputRoot.Hex(),
@@ -386,6 +389,7 @@ func defaultIntent(root string, loc *artifacts.Locator, deployer common.Address,
 				BaseFeeVaultRecipient:      common.HexToAddress("0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"),
 				L1FeeVaultRecipient:        common.HexToAddress("0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f"),
 				SequencerFeeVaultRecipient: common.HexToAddress("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720"),
+				OperatorFeeVaultRecipient:  common.HexToAddress("0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec"),
 				Eip1559Denominator:         250,
 				Eip1559DenominatorCanyon:   250,
 				Eip1559Elasticity:          6,
@@ -400,6 +404,8 @@ func defaultIntent(root string, loc *artifacts.Locator, deployer common.Address,
 					Proposer:          addrs.Proposer,
 					Challenger:        common.HexToAddress("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"),
 				},
+				UseRevenueShare:    true,
+				ChainFeesRecipient: common.HexToAddress("0xBcd4042DE499D14e55001CcbB24a551F3b954096"),
 				AdditionalDisputeGames: []state.AdditionalDisputeGame{
 					{
 						ChainProofParams: state.ChainProofParams{
@@ -488,7 +494,11 @@ func cannonPrestate(monorepoRoot string, allocType AllocType) common.Hash {
 		once = &cannonPrestateMTOnce
 		cacheVar = &cannonPrestateMT
 	} else if cannonVmType == state.VMTypeCannonNext {
-		filename = "prestate-proof-mt64Next.json"
+		if versions.GetCurrentVersion() != versions.GetExperimentalVersion() {
+			filename = "prestate-proof-mt64Next.json"
+		} else {
+			filename = "prestate-proof-mt64.json"
+		}
 		once = &cannonPrestateMTNextOnce
 		cacheVar = &cannonPrestateMTNext
 	} else {
@@ -498,7 +508,7 @@ func cannonPrestate(monorepoRoot string, allocType AllocType) common.Hash {
 	once.Do(func() {
 		f, err := os.Open(path.Join(monorepoRoot, "op-program", "bin", filename))
 		if err != nil {
-			log.Warn("error opening prestate file", "err", err)
+			log.Warn("error opening prestate file. If you're running a test that requires prestates, make sure you've run `make cannon-prestates`", "err", err)
 			return
 		}
 		defer f.Close()
@@ -506,12 +516,16 @@ func cannonPrestate(monorepoRoot string, allocType AllocType) common.Hash {
 		var prestate prestateFile
 		dec := json.NewDecoder(f)
 		if err := dec.Decode(&prestate); err != nil {
-			log.Warn("error decoding prestate file", "err", err)
+			log.Error("error decoding prestate file. If you're running a test that requires prestates, make sure you've run `make cannon-prestates`", "err", err)
 			return
 		}
 
 		*cacheVar = common.HexToHash(prestate.Pre)
 	})
 
+	// Provide a dummy value so that the DeployDisputeGame script succeeds. Many tests do not require a dispute game. So this allieviates the need to build prestates during local development.
+	if *cacheVar == (common.Hash{}) {
+		*cacheVar = common.HexToHash("0xc02b59f772cb23a75b6ffb9f7602ba25fdd5d8e75ad88efcc013fec2c63b0895") // keccak("dummy")
+	}
 	return *cacheVar
 }

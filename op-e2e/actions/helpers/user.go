@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/crossdomain"
+	"github.com/ethereum-optimism/optimism/op-core/predeploys"
 	legacybindings "github.com/ethereum-optimism/optimism/op-e2e/bindings"
 	"github.com/ethereum-optimism/optimism/op-e2e/config"
 	e2ehelpers "github.com/ethereum-optimism/optimism/op-e2e/system/helpers"
@@ -31,7 +32,6 @@ import (
 	bindingspreview "github.com/ethereum-optimism/optimism/op-node/bindings/preview"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-node/withdrawals"
-	"github.com/ethereum-optimism/optimism/op-service/predeploys"
 )
 
 type L1Bindings struct {
@@ -285,7 +285,7 @@ func (s *BasicUser[B]) MakeTransaction(t Testing) *types.Transaction {
 
 // ActMakeTx makes a tx with the predetermined contents (see randomization and other actions)
 // and sends it to the tx pool
-func (s *BasicUser[B]) ActMakeTx(t Testing) {
+func (s *BasicUser[B]) ActMakeTx(t Testing) *types.Transaction {
 	t.Helper()
 	tx := s.MakeTransaction(t)
 	err := s.env.EthCl.SendTransaction(t.Ctx(), tx)
@@ -293,6 +293,7 @@ func (s *BasicUser[B]) ActMakeTx(t Testing) {
 	s.lastTxHash = tx.Hash()
 	// reset the calldata
 	s.txCallData = []byte{}
+	return tx
 }
 
 func (s *BasicUser[B]) ActCheckReceiptStatusOfLastTx(success bool) func(t Testing) {

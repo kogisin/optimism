@@ -3,11 +3,11 @@ package smoke
 import (
 	"testing"
 
+	"github.com/ethereum-optimism/optimism/op-core/predeploys"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/dsl/contract"
 	"github.com/ethereum-optimism/optimism/op-devstack/presets"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/ethereum-optimism/optimism/op-service/predeploys"
 	"github.com/ethereum-optimism/optimism/op-service/txintent/bindings"
 	"github.com/ethereum-optimism/optimism/op-service/txintent/contractio"
 	"github.com/ethereum-optimism/optimism/op-service/txplan"
@@ -18,6 +18,7 @@ import (
 // TestWrapETH checks WETH interactions, testing both reading and writing on the chain.
 // This demonstrates the usage of DSL for contract bindings
 func TestWrapETH(gt *testing.T) {
+	gt.Skip("Skipping Interop Acceptance Test")
 	t := devtest.SerialT(gt)
 	require := t.Require()
 	sys := presets.NewMinimal(t)

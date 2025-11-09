@@ -67,7 +67,6 @@ interface IPermissionedDisputeGameV2 is IDisputeGame {
     error InvalidBondDistributionMode();
     error GameNotFinalized();
     error GameNotResolved();
-    error ReservedGameType();
     error GamePaused();
     event Move(uint256 indexed parentIndex, Claim indexed claim, address indexed claimant);
     event GameClosed(BondDistributionMode bondDistributionMode);
@@ -130,13 +129,11 @@ interface IPermissionedDisputeGameV2 is IDisputeGame {
 
     error BadAuth();
 
-    function proposer() external view returns (address proposer_);
-    function challenger() external view returns (address challenger_);
+    function proposer() external pure returns (address proposer_);
+    function challenger() external pure returns (address challenger_);
 
     function __constructor__(
-        IFaultDisputeGameV2.GameConstructorParams memory _params,
-        address _proposer,
-        address _challenger
+        IFaultDisputeGameV2.GameConstructorParams memory _params
     )
         external;
 }

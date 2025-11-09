@@ -94,16 +94,22 @@ func PayloadToSystemConfig(rollupCfg *rollup.Config, payload *eth.ExecutionPaylo
 	if err != nil {
 		return eth.SystemConfig{}, err
 	}
-	d, e, _ := eip1559.DecodeOptimismExtraData(rollupCfg, uint64(payload.Timestamp), payload.ExtraData)
+	d, e, m := eip1559.DecodeOptimismExtraData(rollupCfg, uint64(payload.Timestamp), payload.ExtraData)
 	copy(r.EIP1559Params[:], eip1559.EncodeHolocene1559Params(d, e))
-	// TODO https://github.com/ethereum-optimism/optimism/issues/16839
-	// r.MinBaseFee = m
 
 	if rollupCfg.IsIsthmus(uint64(payload.Timestamp)) {
 		r.OperatorFeeParams = eth.EncodeOperatorFeeParams(eth.OperatorFeeParams{
 			Scalar:   info.OperatorFeeScalar,
 			Constant: info.OperatorFeeConstant,
 		})
+	}
+
+	if rollupCfg.IsMinBaseFee(uint64(payload.Timestamp)) {
+		// ValidateOptimismExtraData returning a nil error guarantees that m is not nil
+		r.MinBaseFee = *m
+	}
+	if rollupCfg.IsDAFootprintBlockLimit(uint64(payload.Timestamp)) {
+		r.DAFootprintGasScalar = info.DAFootprintGasScalar
 	}
 	return r, nil
 }

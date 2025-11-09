@@ -4,11 +4,6 @@
       {
         "components": [
           {
-            "internalType": "GameType",
-            "name": "gameType",
-            "type": "uint32"
-          },
-          {
             "internalType": "uint256",
             "name": "maxGameDepth",
             "type": "uint256"
@@ -32,16 +27,6 @@
         "internalType": "struct FaultDisputeGameV2.GameConstructorParams",
         "name": "_params",
         "type": "tuple"
-      },
-      {
-        "internalType": "address",
-        "name": "_proposer",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_challenger",
-        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
@@ -182,7 +167,7 @@
         "type": "address"
       }
     ],
-    "stateMutability": "view",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -400,7 +385,7 @@
         "type": "bytes"
       }
     ],
-    "stateMutability": "view",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -413,7 +398,7 @@
         "type": "uint32"
       }
     ],
-    "stateMutability": "view",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -660,7 +645,7 @@
         "type": "address"
       }
     ],
-    "stateMutability": "view",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -1200,11 +1185,6 @@
   {
     "inputs": [],
     "name": "OutOfOrderResolution",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "ReservedGameType",
     "type": "error"
   },
   {

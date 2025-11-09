@@ -20,7 +20,7 @@ import { IProxyAdminOwnedBase } from "interfaces/L1/IProxyAdminOwnedBase.sol";
 
 /// @title SystemConfig Test Init
 /// @notice Reusable test initialization for SystemConfig tests.
-contract SystemConfig_TestInit is CommonTest {
+abstract contract SystemConfig_TestInit is CommonTest {
     event ConfigUpdate(uint256 indexed version, ISystemConfig.UpdateType indexed updateType, bytes data);
 
     bytes32 public constant EXAMPLE_FEATURE = "EXAMPLE_FEATURE";
@@ -225,99 +225,6 @@ contract SystemConfig_Initialize_Test is SystemConfig_TestInit {
             _l2ChainId: 1234,
             _superchainConfig: ISuperchainConfig(address(0))
         });
-    }
-}
-
-/// @title SystemConfig_upgrade_Test
-/// @notice Reusable test for the current upgrade() function in the SystemConfig contract. If
-///         the upgrade() function is changed, tests inside of this contract should be updated to
-///         reflect the new function. If the upgrade() function is removed, remove the
-///         corresponding tests but leave this contract in place so it's easy to add tests back
-///         in the future.
-contract SystemConfig_Upgrade_Test is SystemConfig_TestInit {
-    /// @notice Tests that the upgrade() function succeeds.
-    function test_upgrade_succeeds() external {
-        // Get the slot for _initialized.
-        StorageSlot memory slot = ForgeArtifacts.getSlot("SystemConfig", "_initialized");
-
-        // Set the initialized slot to 0.
-        vm.store(address(systemConfig), bytes32(slot.slot), bytes32(0));
-
-        // Verify the initial dispute game factory slot is non-zero.
-        // We set a value here since it seems this defaults to zero.
-        bytes32 disputeGameFactorySlot = bytes32(uint256(keccak256("systemconfig.disputegamefactory")) - 1);
-        vm.store(address(systemConfig), disputeGameFactorySlot, bytes32(uint256(1)));
-        assertNotEq(systemConfig.disputeGameFactory(), address(0));
-        assertNotEq(vm.load(address(systemConfig), disputeGameFactorySlot), bytes32(0));
-
-        // Trigger upgrade().
-        vm.prank(address(systemConfig.proxyAdmin()));
-        systemConfig.upgrade(1234, ISuperchainConfig(address(0xdeadbeef)));
-
-        // Verify that the initialized slot was updated.
-        bytes32 initializedSlotAfter = vm.load(address(systemConfig), bytes32(slot.slot));
-        assertEq(initializedSlotAfter, bytes32(uint256(3)));
-
-        // Verify that the l2ChainId was updated.
-        assertEq(systemConfig.l2ChainId(), 1234);
-
-        // Verify that the dispute game factory address was cleared.
-        assertEq(vm.load(address(systemConfig), disputeGameFactorySlot), bytes32(0));
-    }
-
-    /// @notice Tests that the upgrade() function reverts if called a second time.
-    function test_upgrade_upgradeTwice_reverts() external {
-        // Get the slot for _initialized.
-        StorageSlot memory slot = ForgeArtifacts.getSlot("SystemConfig", "_initialized");
-
-        // Set the initialized slot to 0.
-        vm.store(address(systemConfig), bytes32(slot.slot), bytes32(0));
-
-        // Trigger first upgrade.
-        vm.prank(address(systemConfig.proxyAdmin()));
-        systemConfig.upgrade(1234, ISuperchainConfig(address(0xdeadbeef)));
-
-        // Try to trigger second upgrade.
-        vm.prank(address(systemConfig.proxyAdmin()));
-        vm.expectRevert("Initializable: contract is already initialized");
-        systemConfig.upgrade(1234, ISuperchainConfig(address(0xdeadbeef)));
-    }
-
-    /// @notice Tests that the upgrade() function reverts if called after initialization.
-    function test_upgrade_afterInitialization_reverts() external {
-        // Get the slot for _initialized.
-        StorageSlot memory slot = ForgeArtifacts.getSlot("SystemConfig", "_initialized");
-
-        // Slot value should be set to 3 (already initialized).
-        bytes32 initializedSlotBefore = vm.load(address(systemConfig), bytes32(slot.slot));
-        assertEq(initializedSlotBefore, bytes32(uint256(3)));
-
-        // l2ChainId should be non-zero.
-        assertNotEq(systemConfig.l2ChainId(), 0);
-
-        // Try to trigger upgrade().
-        vm.expectRevert("Initializable: contract is already initialized");
-        systemConfig.upgrade(1234, ISuperchainConfig(address(0xdeadbeef)));
-    }
-
-    /// @notice Tests that the upgrade() function reverts if called by a non-proxy admin or owner.
-    /// @param _sender The address of the sender to test.
-    function testFuzz_upgrade_notProxyAdminOrProxyAdminOwner_reverts(address _sender) public {
-        // Prank as the not ProxyAdmin or ProxyAdmin owner.
-        vm.assume(_sender != address(systemConfig.proxyAdmin()) && _sender != systemConfig.proxyAdminOwner());
-
-        // Get the slot for _initialized.
-        StorageSlot memory slot = ForgeArtifacts.getSlot("SystemConfig", "_initialized");
-
-        // Set the initialized slot to 0.
-        vm.store(address(systemConfig), bytes32(slot.slot), bytes32(0));
-
-        // Expect the revert with `ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner` selector.
-        vm.expectRevert(IProxyAdminOwnedBase.ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner.selector);
-
-        // Call the `upgrade` function with the sender
-        vm.prank(_sender);
-        systemConfig.upgrade(1234, ISuperchainConfig(address(0xdeadbeef)));
     }
 }
 
@@ -865,6 +772,70 @@ contract SystemConfig_SetFeature_Test is SystemConfig_TestInit {
         vm.expectRevert(ISystemConfig.SystemConfig_InvalidFeatureState.selector);
         systemConfig.setFeature("EXAMPLE FEATURE", false);
     }
+
+    /// @notice Tests that disabling ETH_LOCKBOX reverts if the OptimismPortal has a non-zero
+    ///         ETHLockbox configured.
+    function test_setFeature_ethLockboxDisableWhileConfigured_reverts() external {
+        address proxyAdmin = address(systemConfig.proxyAdmin());
+
+        // Ensure ETH_LOCKBOX is enabled first (no pause active in fresh setup).
+        if (!systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX)) {
+            vm.prank(proxyAdmin);
+            systemConfig.setFeature(Features.ETH_LOCKBOX, true);
+            assertTrue(systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX));
+        }
+
+        // Force the portal to have a configured ETHLockbox address.
+        StorageSlot memory slot = ForgeArtifacts.getSlot("OptimismPortal2", "ethLockbox");
+        vm.store(address(optimismPortal2), bytes32(slot.slot), bytes32(uint256(uint160(address(1)))));
+
+        // Disabling should revert due to safety check while lockbox is configured.
+        vm.expectRevert(ISystemConfig.SystemConfig_InvalidFeatureState.selector);
+        vm.prank(proxyAdmin);
+        systemConfig.setFeature(Features.ETH_LOCKBOX, false);
+    }
+
+    /// @notice Tests that enabling ETH_LOCKBOX while the system is paused (global) reverts.
+    function test_setFeature_ethLockboxEnableWhilePaused_reverts() external {
+        address proxyAdmin = address(systemConfig.proxyAdmin());
+
+        // Ensure ETH_LOCKBOX is enabled first (no pause active in fresh setup).
+        if (!systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX)) {
+            vm.prank(proxyAdmin);
+            systemConfig.setFeature(Features.ETH_LOCKBOX, true);
+            assertTrue(systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX));
+        }
+
+        // Pause globally.
+        vm.prank(superchainConfig.guardian());
+        superchainConfig.pause(address(0));
+
+        // Enabling while paused should revert.
+        vm.expectRevert(ISystemConfig.SystemConfig_InvalidFeatureState.selector);
+        vm.prank(proxyAdmin);
+        systemConfig.setFeature(Features.ETH_LOCKBOX, true);
+    }
+
+    /// @notice Tests that disabling ETH_LOCKBOX while the system is paused (global) reverts.
+    function test_setFeature_ethLockboxDisableWhilePaused_reverts() external {
+        address proxyAdmin = address(systemConfig.proxyAdmin());
+
+        // Ensure ETH_LOCKBOX is enabled first.
+        if (!systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX)) {
+            vm.prank(proxyAdmin);
+            systemConfig.setFeature(Features.ETH_LOCKBOX, true);
+            assertTrue(systemConfig.isFeatureEnabled(Features.ETH_LOCKBOX));
+        }
+
+        // Pause globally.
+        vm.prank(superchainConfig.guardian());
+        superchainConfig.pause(address(0));
+
+        // Disabling while paused should revert.
+        vm.expectRevert(ISystemConfig.SystemConfig_InvalidFeatureState.selector);
+        vm.prank(proxyAdmin);
+        systemConfig.setFeature(Features.ETH_LOCKBOX, false);
+    }
 }
 
 /// @title SystemConfig_IsFeatureEnabled_Test
@@ -914,5 +885,45 @@ contract SystemConfig_SuperchainConfig_Test is SystemConfig_TestInit {
     /// @notice Tests that `superchainConfig()` returns the correct address.
     function test_superchainConfig_succeeds() external view {
         assertEq(address(systemConfig.superchainConfig()), address(superchainConfig));
+    }
+}
+
+/// @title SystemConfig_SetMinBaseFee_Test
+/// @notice Test contract for SystemConfig `setMinBaseFee` function.
+contract SystemConfig_SetMinBaseFee_Test is SystemConfig_TestInit {
+    /// @notice Tests that `setMinBaseFee` reverts if the caller is not the owner.
+    function test_setMinBaseFee_notOwner_reverts() external {
+        vm.expectRevert("Ownable: caller is not the owner");
+        systemConfig.setMinBaseFee(0);
+    }
+
+    /// @notice Tests that `setMinBaseFee` updates the min base fee successfully.
+    function testFuzz_setMinBaseFee_succeeds(uint64 newMinBaseFee) external {
+        vm.expectEmit(address(systemConfig));
+        emit ConfigUpdate(0, ISystemConfig.UpdateType.MIN_BASE_FEE, abi.encode(newMinBaseFee));
+
+        vm.prank(systemConfig.owner());
+        systemConfig.setMinBaseFee(newMinBaseFee);
+        assertEq(systemConfig.minBaseFee(), newMinBaseFee);
+    }
+}
+
+/// @title SystemConfig_SetDAFootprintGasScalar_Test
+/// @notice Test contract for SystemConfig `setDAFootprintGasScalar` function.
+contract SystemConfig_SetDAFootprintGasScalar_Test is SystemConfig_TestInit {
+    /// @notice Tests that `setDAFootprintGasScalar` reverts if the caller is not the owner.
+    function test_setDAFootprintGasScalar_notOwner_reverts() external {
+        vm.expectRevert("Ownable: caller is not the owner");
+        systemConfig.setDAFootprintGasScalar(0);
+    }
+
+    /// @notice Tests that `setDAFootprintGasScalar` updates the DA footprint gas scalar successfully.
+    function testFuzz_setDAFootprintGasScalar_succeeds(uint16 newScalar) external {
+        vm.expectEmit(address(systemConfig));
+        emit ConfigUpdate(0, ISystemConfig.UpdateType.DA_FOOTPRINT_GAS_SCALAR, abi.encode(newScalar));
+
+        vm.prank(systemConfig.owner());
+        systemConfig.setDAFootprintGasScalar(newScalar);
+        assertEq(systemConfig.daFootprintGasScalar(), newScalar);
     }
 }

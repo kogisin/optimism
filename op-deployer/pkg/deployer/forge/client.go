@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -29,6 +30,22 @@ type Client struct {
 	Wd     string
 }
 
+func NewStandardClient(workdir string) (*Client, error) {
+	forgeBinary, err := NewStandardBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize forge binary: %w", err)
+	}
+	if err := forgeBinary.Ensure(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to ensure forge binary: %w", err)
+	}
+
+	forgeClient := NewClient(forgeBinary)
+	forgeClient.Wd = filepath.Dir(workdir)
+	fmt.Printf("Forge client working directory: %s\n", forgeClient.Wd)
+
+	return forgeClient, nil
+}
+
 func NewClient(binary Binary) *Client {
 	return &Client{
 		Binary: binary,
@@ -40,7 +57,7 @@ func NewClient(binary Binary) *Client {
 func (c *Client) Version(ctx context.Context) (VersionInfo, error) {
 	buf := new(bytes.Buffer)
 	if err := c.execCmd(ctx, buf, io.Discard, "--version"); err != nil {
-		return VersionInfo{}, fmt.Errorf("failed to execute command: %w", err)
+		return VersionInfo{}, fmt.Errorf("failed to run forge version command: %w", err)
 	}
 	outputStr := buf.String()
 	matches := versionRegexp.FindAllStringSubmatch(outputStr, -1)
@@ -67,7 +84,7 @@ func (c *Client) RunScript(ctx context.Context, script string, sig string, args 
 	cliOpts = append(cliOpts, opts...)
 	cliOpts = append(cliOpts, "--sig", sig, script, "0x"+hex.EncodeToString(args))
 	if err := c.execCmd(ctx, buf, io.Discard, cliOpts...); err != nil {
-		return "", fmt.Errorf("failed to execute command: %w", err)
+		return "", fmt.Errorf("failed to execute forge script: %w", err)
 	}
 	return buf.String(), nil
 }
@@ -93,7 +110,7 @@ func (c *Client) execCmd(ctx context.Context, stdout io.Writer, stderr io.Writer
 	cmd.Stderr = mwStderr
 	cmd.Dir = c.Wd
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to execute forge: %w", err)
+		return fmt.Errorf("failed to run forge command: %w", err)
 	}
 	return nil
 }
@@ -106,6 +123,11 @@ type ScriptCallDecoder[O any] interface {
 	Decode(raw []byte) (O, error)
 }
 
+// ScriptCaller is a function that calls a forge script
+// Ouputs:
+// - Return value of the script (decoded into go type)
+// - Bool indicating if the script was recompiled (mostly used for testing)
+// - Error if the script fails to run
 type ScriptCaller[I any, O any] func(ctx context.Context, input I, opts ...string) (O, bool, error)
 
 func NewScriptCaller[I any, O any](client *Client, script string, sig string, encoder ScriptCallEncoder[I], decoder ScriptCallDecoder[O]) ScriptCaller[I, O] {
@@ -117,7 +139,7 @@ func NewScriptCaller[I any, O any](client *Client, script string, sig string, en
 		}
 		rawOut, err := client.RunScript(ctx, script, sig, encArgs, opts...)
 		if err != nil {
-			return out, false, fmt.Errorf("failed to execute forge: %w", err)
+			return out, false, fmt.Errorf("failed to run forge script: %w", err)
 		}
 		sigilMatches := sigilRegexp.FindAllStringSubmatch(rawOut, -1)
 		if len(sigilMatches) != 1 || len(sigilMatches[0]) != 2 {
