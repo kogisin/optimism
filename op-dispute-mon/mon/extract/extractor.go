@@ -136,7 +136,7 @@ func (e *Extractor) enrichGame(ctx context.Context, blockHash common.Hash, game 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create contracts: %w", err)
 	}
-	meta, err := caller.GetGameMetadata(ctx, rpcblock.ByHash(blockHash))
+	meta, err := caller.GetExtendedMetadata(ctx, rpcblock.ByHash(blockHash))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch game metadata: %w", err)
 	}
@@ -152,7 +152,7 @@ func (e *Extractor) enrichGame(ctx context.Context, blockHash common.Hash, game 
 		LastUpdateTime:               e.clock.Now(),
 		GameMetadata:                 game,
 		L1Head:                       meta.L1Head,
-		L2BlockNumber:                meta.L2SequenceNum,
+		L2SequenceNumber:             meta.L2SequenceNum,
 		RootClaim:                    meta.RootClaim,
 		Status:                       meta.Status,
 		MaxClockDuration:             meta.MaxClockDuration,

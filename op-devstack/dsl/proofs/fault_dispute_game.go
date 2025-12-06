@@ -53,8 +53,8 @@ func NewFaultDisputeGame(
 	return fdg
 }
 
-func (g *FaultDisputeGame) GameType() challengerTypes.GameType {
-	return challengerTypes.GameType(contract.Read(g.game.GameType()))
+func (g *FaultDisputeGame) GameType() gameTypes.GameType {
+	return gameTypes.GameType(contract.Read(g.game.GameType()))
 }
 
 func (g *FaultDisputeGame) MaxDepth() challengerTypes.Depth {
@@ -80,6 +80,10 @@ func (g *FaultDisputeGame) StartingL2SequenceNumber() uint64 {
 func (g *FaultDisputeGame) ClaimAtIndex(claimIndex uint64) *Claim {
 	claim := g.claimAtIndex(claimIndex)
 	return g.newClaim(claimIndex, claim)
+}
+
+func (g *FaultDisputeGame) absolutePrestate() common.Hash {
+	return contract.Read(g.game.AbsolutePrestate())
 }
 
 func (g *FaultDisputeGame) L1Head() common.Hash {
